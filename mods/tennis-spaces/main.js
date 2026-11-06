@@ -1,4 +1,4 @@
-// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: with props role "agents", it shows agents grouped by status (Rally, Challenge, Ready, Game) instead of the spaces.
+// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: with props role "agents", it shows agents grouped by status (Rally, Challenge, Ready, Point) instead of the spaces.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
@@ -42,7 +42,7 @@ const GROUPS = [
   { key: "rally", label: "Rally", statuses: ["working"], color: "working" },
   { key: "challenge", label: "Challenge", statuses: ["blocked"], color: "blocked" },
   { key: "ready", label: "Ready", statuses: ["idle", "unknown"], color: "idle" },
-  { key: "game", label: "Game", statuses: ["done"], color: "done" },
+  { key: "point", label: "Point", statuses: ["done"], color: "done" },
 ];
 const tint = (color, alpha, fallback) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : fallback);
 
@@ -435,7 +435,7 @@ export default class Spaces extends View {
         .items_center().justify_center().text_size(size).font_weight(800).text_color("#10140c").child("!")
         .loop("opacity", { from: 0.45, to: 1, period: 700 });
     }
-    if (group.key === "game") {
+    if (group.key === "point") {
       return div().size(size + 2).flex_none().rounded((size + 2) / 2).border(2).border_color(color);
     }
     return div().size(size).flex_none().rounded(size / 2).bg(BALL).opacity(0.55);
@@ -450,7 +450,7 @@ export default class Spaces extends View {
       return div().id(`agent-mark-${a.address}`).size(8).rounded(4).bg(t.blocked)
         .loop("opacity", { from: 0.35, to: 1, period: 700 });
     }
-    if (group.key === "game") return div().size(8).rounded(4).border(2).border_color(t.done);
+    if (group.key === "point") return div().size(8).rounded(4).border(2).border_color(t.done);
     return div().size(7).rounded(4).bg(t.idle);
   }
 

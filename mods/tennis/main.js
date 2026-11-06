@@ -8,7 +8,7 @@ const COURTS = [
   { theme: "tennis-clay", label: "Clay", venue: "Clay court", court: "#c8632f", stripe: "#c8632f", outside: "#a8512a", line: "#fff7ee" },
   { theme: "tennis-indoor", label: "Indoor", venue: "Indoor arena", court: "#2346a8", stripe: "#2346a8", outside: "#141826", line: "#ffffff" },
 ];
-const CALL = { working: "Rally", blocked: "Challenge", done: "Game", idle: "Ready", unknown: "Warm-up" };
+const CALL = { working: "Rally", blocked: "Challenge", done: "Point", idle: "Ready", unknown: "Warm-up" };
 const QUIET = new Set(["idle", "unknown"]);
 const COURT_PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 };
 const BALL = "#dfff4f", BALL_EDGE = "#a8c225";
@@ -105,7 +105,7 @@ export default class Tennis extends View {
     const done = list.filter((a) => a.status === "done").length;
     const umpire = blocked ? [`Challenge! ${blocked} ${blocked === 1 ? "agent needs" : "agents need"} you`, t.blocked]
       : working ? ["Quiet please, rally in progress", "#ffffff"]
-      : done ? ["Game! Check the results", "#ffffff"]
+      : done ? ["Point! Check the results", "#ffffff"]
       : list.length ? ["Players ready", "#ffffffb0"]
       : ["", "#ffffff"];
     const active = spaces().find((s) => s.active);
