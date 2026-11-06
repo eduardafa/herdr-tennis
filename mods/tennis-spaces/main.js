@@ -458,9 +458,10 @@ export default class Spaces extends View {
           .when(n >= 0, (ball) => ball.loop("left", { from: 0, to: 18, period: 1200 })));
     }
     if (group.key === "challenge") {
-      return h_flex().id(`group-mark-${group.key}-${n}`).size(size + 4).flex_none().rounded((size + 4) / 2).bg(color)
-        .items_center().justify_center().text_size(size).font_weight(800).text_color("#10140c").child("!")
-        .loop("opacity", { from: 0.45, to: 1, period: 700 });
+      const waiting = n >= 0;
+      return h_flex().id(`group-mark-${group.key}-${n}`).size(size + 2).flex_none().rounded((size + 2) / 2).bg(color)
+        .items_center().justify_center().text_size(size - 0.5).font_weight(900).text_color("#10140c").child("!")
+        .when(waiting, (el) => el.loop("opacity", { from: 0.45, to: 1, period: 700 }));
     }
     if (group.key === "point") {
       return div().size(size + 2).flex_none().rounded((size + 2) / 2).border(2).border_color(color);
