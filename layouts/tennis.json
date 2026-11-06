@@ -10,7 +10,7 @@
     { "id": "tennis-play", "type": "row", "divider": { "width": 1, "color": "border" },
       "children": [
         { "id": "sidebar", "type": "column", "size": { "px": 220 }, "min": 40, "max": 420,
-          "children": [ { "id": "tennis-spaces", "type": "block", "content": { "mod": "spaces" } } ] },
+          "children": [ { "id": "tennis-spaces", "type": "block", "content": { "mod": "tennis-spaces" } } ] },
         { "id": "tennis-work", "type": "column",
           "children": [
             { "id": "tennis-tabs", "type": "block", "size": { "px": 30 }, "content": { "mod": "tabs" } },
