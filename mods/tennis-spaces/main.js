@@ -1,4 +1,4 @@
-// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: with props role "agents", it shows agents grouped by status (Rally, Challenge, Ready, Point) instead of the spaces.
+// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: with props role "agents", it shows agents grouped by status (Rally, Challenge, Ready, Point) instead of the spaces; the Spaces header and each repo's worktrees fold; each space shows its most urgent agent's status marker.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
@@ -44,6 +44,9 @@ const GROUPS = [
   { key: "ready", label: "Ready", statuses: ["idle", "unknown"], color: "idle" },
   { key: "point", label: "Point", statuses: ["done"], color: "done" },
 ];
+const SPACES_BLOCK = "tennis-spaces";
+const SPACE_URGENCY = ["blocked", "done", "working", "idle", "unknown"];
+const FOLDED_SPACES_H = 31;
 const tint = (color, alpha, fallback) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : fallback);
 
 // A space speaks up only when something in it needs you.
@@ -76,6 +79,8 @@ export default class Spaces extends View {
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     this.foldedGroups = new Set(JSON.parse(localStorage.getItem("tennis.groups.folded") ?? "[]"));
+    this.spacesFolded = JSON.parse(localStorage.getItem("tennis.spaces.folded") ?? "false");
+    this.foldedRepos = new Set(JSON.parse(localStorage.getItem("tennis.worktrees.folded") ?? "[]"));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -277,6 +282,8 @@ export default class Spaces extends View {
       if (!r.g || r.g.linked || placed.has(r.g.repo)) continue;
       placed.add(r.g.repo);
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
+      out[out.length - 1].kids = kids.length;
+      if (this.foldedRepos.has(r.g.repo)) continue;
       kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
     return out;
@@ -354,8 +361,23 @@ export default class Spaces extends View {
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
 
-  row({ w, i, g, tree }, t) {
+  worktreeFold(w, g, kids, t) {
+    const folded = this.foldedRepos.has(g.repo);
+    return h_flex().id(`worktrees-${w.id}`).flex_none().gap(3).items_center().px(4).py(1).rounded(4).cursor_pointer()
+      .text_size(11).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        folded ? this.foldedRepos.delete(g.repo) : this.foldedRepos.add(g.repo);
+        localStorage.setItem("tennis.worktrees.folded", JSON.stringify([...this.foldedRepos]));
+        cx.notify();
+      })
+      .when(folded, (el) => el.child(div().child(String(kids))))
+      .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(10));
+  }
+
+  row({ w, i, g, tree, kids }, t) {
     const on = w.active;
+    const status = this.spaceStatus?.[w.id];
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -401,10 +423,15 @@ export default class Spaces extends View {
         h_flex()
           .gap(9)
           .items_center()
-          .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
+          .when(Boolean(tree), el => el.pl(22).child(status
+            ? h_flex().size(13).flex_none().items_center().justify_center().child(this.statusMark(status, w.id, t))
+            : svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
+          .when(!tree, el => el.child(h_flex().relative().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")
+            .when(Boolean(status), (a) => a.child(h_flex().absolute().right(-5).top(-5).size(12).rounded(6).bg(t.chrome)
+              .items_center().justify_center().child(this.statusMark(status, w.id, t))))))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .when(kids > 0, (el) => el.child(this.worktreeFold(w, g, kids, t))),
       );
   }
 
@@ -493,8 +520,27 @@ export default class Spaces extends View {
       .children(GROUPS.map(section));
   }
 
+  statusMark(status, key, t) {
+    if (status === "working") return div().id(`space-mark-${key}`).relative().size(8).rounded(4).bg(BALL).loop("top", { from: 2, to: -2, period: 560 });
+    if (status === "blocked") return div().id(`space-mark-${key}`).size(8).rounded(4).bg(t.blocked).loop("opacity", { from: 0.35, to: 1, period: 700 });
+    if (status === "done") return div().size(8).rounded(4).border(2).border_color(t.done);
+    return div().size(7).rounded(4).bg(t.idle);
+  }
+
+  toggleSpaces(cx) {
+    this.spacesFolded = !this.spacesFolded;
+    localStorage.setItem("tennis.spaces.folded", JSON.stringify(this.spacesFolded));
+    run("layout.resize", this.spacesFolded ? { id: SPACES_BLOCK, px: FOLDED_SPACES_H } : { id: SPACES_BLOCK, weight: 1 });
+    cx.notify();
+  }
+
   render() {
     const t = theme();
+    this.spaceStatus = {};
+    for (const a of agents()) {
+      const current = this.spaceStatus[a.space];
+      if (!current || SPACE_URGENCY.indexOf(a.status) < SPACE_URGENCY.indexOf(current)) this.spaceStatus[a.space] = a.status;
+    }
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
     const sp = spaces();
@@ -513,7 +559,12 @@ export default class Spaces extends View {
     }
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
-        .when(!collapsed, el => el.child("Spaces"))
+        .when(!collapsed, el => el.child(h_flex().id("spaces-fold").gap(6).items_center().cursor_pointer()
+          .hover(s => s.text_color(t.foreground))
+          .on_click((_e, cx) => this.toggleSpaces(cx))
+          .child(svg(`mods/workspace-chrome/chevron-${this.spacesFolded ? "right" : "down"}.svg`).size(11))
+          .child("Spaces")
+          .when(this.spacesFolded, f => f.child(div().text_color(t.muted).child(String(spaces().length))))))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")

@@ -52,22 +52,41 @@
       },
       "children": [
         {
-          "id": "tennis-agents",
+          "id": "sidebar",
           "type": "column",
           "size": {
-            "px": 220
+            "px": 240
           },
-          "min": 160,
+          "min": 40,
           "max": 420,
+          "divider": {
+            "width": 1,
+            "color": "border"
+          },
           "children": [
             {
               "id": "tennis-agent-groups",
               "type": "block",
+              "size": {
+                "weight": 1
+              },
+              "min": 120,
               "content": {
                 "mod": "tennis-spaces",
                 "props": {
                   "role": "agents"
                 }
+              }
+            },
+            {
+              "id": "tennis-spaces",
+              "type": "block",
+              "size": {
+                "weight": 1
+              },
+              "min": 31,
+              "content": {
+                "mod": "tennis-spaces"
               }
             }
           ]
@@ -121,24 +140,6 @@
                     "reveal": "always"
                   }
                 }
-              }
-            }
-          ]
-        },
-        {
-          "id": "sidebar",
-          "type": "column",
-          "size": {
-            "px": 220
-          },
-          "min": 40,
-          "max": 420,
-          "children": [
-            {
-              "id": "tennis-spaces",
-              "type": "block",
-              "content": {
-                "mod": "tennis-spaces"
               }
             }
           ]
