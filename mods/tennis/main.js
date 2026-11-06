@@ -12,6 +12,7 @@ const CALL = { working: "Rally", blocked: "Challenge", done: "Game", idle: "Read
 const COURT_PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 };
 const BALL = "#dfff4f", BALL_EDGE = "#a8c225";
 const PLAYER_W = 46, PLAYER_H = 57, PLAYER_SPACING = 132, RALLY_MS = 1800;
+const SEAT_W = 48, BENCH_ROW_H = 78, WOOD = "#b07a45", WOOD_DARK = "#7a5130";
 
 const courtNow = () => {
   const picked = settings()?.theme;
@@ -38,9 +39,11 @@ export default class Tennis extends View {
   scene() {
     const t = theme(), c = courtNow(), list = agents();
     setAgentOrder(list.map((a) => a.address));
-    const { width: W, height: H } = this.size;
-    const mx = Math.max(90, W * 0.08), my = Math.max(34, H * 0.16);
-    const cl = mx, ct = my, cw = Math.max(240, W - mx * 2), ch = Math.max(90, H - my * 2);
+    const zoom = Number(settings()?.zoom) || 1;
+    const W = this.size.width / zoom, H = this.size.height / zoom;
+    const benchW = Math.min(240, Math.max(170, W * 0.15)), benchX = W - benchW - 24;
+    const my = Math.max(34, H * 0.16), cl = Math.max(60, W * 0.04), titleX = Math.max(90, cl);
+    const ct = my, cw = Math.max(240, benchX - 40 - cl), ch = Math.max(90, H - my * 2);
     const net = cl + cw / 2, singles = ch * 0.125, service = cw * 0.23, lw = 2;
 
     const surface = [rect(cl, ct, cw, ch, c.court)];
@@ -75,7 +78,8 @@ export default class Tennis extends View {
     const onCourt = [...list].sort((a, b) => (COURT_PRIORITY[a.status] ?? 9) - (COURT_PRIORITY[b.status] ?? 9));
     const left = place("left", onCourt.filter((_, i) => i % 2 === 0).slice(0, perSide));
     const right = place("right", onCourt.filter((_, i) => i % 2 === 1).slice(0, perSide));
-    const benched = list.length - left.length - right.length;
+    const placed = new Set([...left, ...right].map((p) => p.a.address));
+    const benched = onCourt.filter((a) => !placed.has(a.address));
 
     const racket = (p) => ({
       x: p.x + (p.side === "left" ? PLAYER_W * 0.85 : PLAYER_W * 0.15),
@@ -100,11 +104,11 @@ export default class Tennis extends View {
     return div().id("court").relative().size_full().overflow_hidden().bg(c.outside)
       .on_size_change((size, cx) => { this.size = size; cx.notify(); })
       .children(surface).children(lines).children(netParts)
-      .child(h_flex().absolute().left(mx).top(my / 2 - 9).gap(8).items_center()
+      .child(h_flex().absolute().left(titleX).top(my / 2 - 9).gap(8).items_center()
         .child(div().size(10).rounded(5).bg(BALL))
         .child(div().text_size(14).font_weight(800).text_color("#ffffff").child(c.venue))
         .child(div().text_size(13).text_color("#ffffffb0").child(active?.name ?? "")))
-      .child(div().absolute().right(mx).top(my / 2 - 9).text_size(13).font_weight(700).text_color(umpire[1])
+      .child(div().absolute().right(W - cl - cw).top(my / 2 - 9).text_size(13).font_weight(700).text_color(umpire[1])
         .when(blocked > 0, (el) => el.id("umpire").loop("opacity", { from: 0.55, to: 1, period: 900 }))
         .child(umpire[0]))
       .when(list.length === 0, (el) => el.child(v_flex().absolute().left(cl).top(ct + ch / 2 - 12).w(cw).items_center()
@@ -112,8 +116,45 @@ export default class Tennis extends View {
           .child("No players on court yet. Start an agent to serve."))))
       .children([...left, ...right].map((p) => this.player(p, t)))
       .when(rally !== null, (el) => el.child(this.ball(rally[0], rally[1])))
-      .when(benched > 0, (el) => el.child(div().absolute().right(mx + 8).bottom(my + 6).px(8).py(2).rounded(8)
-        .bg("#00000055").text_size(11).font_weight(600).text_color("#ffffff").child(`+${benched} on the bench`)));
+      .child(h_flex().absolute().left(benchX).top(my / 2 - 9).gap(6).items_center()
+        .child(div().text_size(12).font_weight(800).text_color("#ffffff").child("BENCH"))
+        .when(benched.length > 0, (el) => el.child(div().text_size(12).text_color("#ffffffb0").child(String(benched.length)))))
+      .children(this.bench(benched, benchX, ct, benchW, ch, t));
+  }
+
+  bench(list, x, y, w, h, t) {
+    const perRow = Math.max(1, Math.floor((w - 16) / SEAT_W));
+    const rows = Math.max(1, Math.min(3, Math.floor((h + 12) / BENCH_ROW_H)));
+    const seated = list.slice(0, perRow * rows);
+    const extra = list.length - seated.length;
+    const top = y + (h - rows * BENCH_ROW_H) / 2 + 4;
+    const parts = [rect(x - 10, y - 6, w + 20, h + 12, "#00000026").rounded(10)];
+    for (let r = 0; r < rows; r++) {
+      const ry = top + r * BENCH_ROW_H;
+      parts.push(
+        rect(x, ry + 16, w, 7, WOOD_DARK).rounded(2),
+        rect(x + 8, ry + 23, 4, 11, WOOD_DARK), rect(x + w - 12, ry + 23, 4, 11, WOOD_DARK),
+        rect(x, ry + 34, w, 7, WOOD).rounded(2),
+        rect(x + 8, ry + 41, 4, 12, WOOD_DARK), rect(x + w - 12, ry + 41, 4, 12, WOOD_DARK),
+      );
+    }
+    seated.forEach((a, i) => {
+      const ry = top + Math.floor(i / perRow) * BENCH_ROW_H, sx = x + 8 + (i % perRow) * SEAT_W;
+      const pulsing = a.status === "working" || a.status === "blocked";
+      parts.push(v_flex().id(`bench-${a.address}`).absolute().left(sx).top(ry).w(SEAT_W).items_center().cursor_pointer()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click(() => run("agent.focus", { terminal: a.address }))
+        .child(div().relative().w(40).h(52)
+          .child(image("mods/tennis/player-sitting.svg").w(40).h(52))
+          .child(div().id(`bench-dot-${a.address}`).absolute().right(0).top(0).size(8).rounded(4).bg(t[a.status] ?? t.idle)
+            .when(pulsing, (d) => d.loop("opacity", { from: 0.4, to: 1, period: 800 }))))
+        .child(div().max_w(SEAT_W).text_size(9).font_weight(600).text_color("#ffffff").truncate().child(a.space_name)));
+    });
+    if (extra > 0) {
+      parts.push(div().absolute().left(x + w - 60).top(y + h - 6).text_size(11).font_weight(600)
+        .text_color("#ffffffb0").child(`+${extra} more`));
+    }
+    return parts;
   }
 
   player(p, t) {
