@@ -2,7 +2,7 @@
 
 A layout for the [Herdr app](https://herdr.dev): your coding agents play tennis while they work. Four courts: hard, grass, clay and indoor.
 
-![Tennis](preview.png)
+![Tennis](preview.png?v=3)
 
 ## Install
 
