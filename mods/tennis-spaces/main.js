@@ -1,12 +1,12 @@
-// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: agent status under each space.
+// Derived from the `spaces` mod shipped with Herdr (Apache-2.0, https://github.com/herdrdev/herdr-app). Modified: with props role "agents", it shows agents grouped by status (Rally, Challenge, Ready, Game) instead of the spaces.
 // Workspace spaces: stable colored avatars, worktrees under their checkout,
 // grouped by machine when more than one is known. After a space's name, the repo
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
 // switch, right-click for its menu, drag to reorder.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { agents, props, spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -38,9 +38,13 @@ const FALLBACK = 60000;
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
 const BALL = "#dfff4f";
-const CALLS = { working: "Rally", blocked: "Challenge", done: "Game" };
-const URGENCY = ["blocked", "done", "working"];
-const STATUS_LINE_H = 16;
+const GROUPS = [
+  { key: "rally", label: "Rally", statuses: ["working"], color: "working" },
+  { key: "challenge", label: "Challenge", statuses: ["blocked"], color: "blocked" },
+  { key: "ready", label: "Ready", statuses: ["idle", "unknown"], color: "idle" },
+  { key: "game", label: "Game", statuses: ["done"], color: "done" },
+];
+const tint = (color, alpha, fallback) => (/^#[0-9a-f]{6}$/i.test(color ?? "") ? color + alpha : fallback);
 
 // A space speaks up only when something in it needs you.
 export function glyph(status) {
@@ -71,6 +75,7 @@ export default class Spaces extends View {
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    this.foldedGroups = new Set(JSON.parse(localStorage.getItem("tennis.groups.folded") ?? "[]"));
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -349,31 +354,8 @@ export default class Spaces extends View {
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
 
-  tally() {
-    const by = {};
-    for (const a of agents()) {
-      const counts = by[a.space] ??= { working: 0, blocked: 0, done: 0 };
-      if (a.status in counts) counts[a.status]++;
-    }
-    return by;
-  }
-
-  statusLine(w, counts, tree, t) {
-    const label = (call) => counts[call] > 1 ? `${CALLS[call]} ${counts[call]}` : CALLS[call];
-    const pill = (call) => div().id(`space-${call}-${w.id}`).flex_none().px(6).rounded(6).bg(tone(t, call))
-      .text_size(9.5).font_weight(800).text_color("#10140c").child(label(call).toUpperCase())
-      .when(call === "blocked", (el) => el.loop("opacity", { from: 0.6, to: 1, period: 700 }));
-    const rally = () => h_flex().flex_none().gap(4).items_center()
-      .child(div().id(`space-ball-${w.id}`).relative().size(7).rounded(4).bg(BALL).loop("top", { from: 1, to: -2, period: 560 }))
-      .child(div().text_size(10.5).font_weight(700).text_color(t.working).child(label("working")));
-    return h_flex().h(16).pl(tree ? 44 : 27).gap(8).items_center()
-      .children(URGENCY.filter((call) => counts[call] > 0).map((call) => (call === "working" ? rally() : pill(call))));
-  }
-
   row({ w, i, g, tree }, t) {
     const on = w.active;
-    const counts = this.calls?.[w.id];
-    const call = URGENCY.find((s) => counts?.[s] > 0);
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -381,15 +363,12 @@ export default class Spaces extends View {
       .relative()
       .id(`space-${w.id}`)
       .px(8)
-      .h(rowHeight({ tree }) + (call ? STATUS_LINE_H : 0))
+      .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
       .rounded(8)
       .when(on, (el) => el.bg(t.selected))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(Boolean(call), (el) => el.child(div().id(`space-call-bar-${w.id}`).absolute().left(0).top(7).bottom(7).w(3).rounded(2)
-        .bg(call === "working" ? BALL : tone(t, call))
-        .when(call === "blocked", (bar) => bar.loop("opacity", { from: 0.35, to: 1, period: 800 }))))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -426,8 +405,7 @@ export default class Spaces extends View {
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
-      )
-      .when(Boolean(call), (el) => el.child(this.statusLine(w, counts, tree, t)));
+      );
   }
 
   compact({ w, i }, t) {
@@ -442,6 +420,77 @@ export default class Spaces extends View {
       .on_click(() => run("space.select", { id: w.id }))
       .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
       .child(div().text_color(tone(t, w.status)).child(glyph(w.status)));
+  }
+
+  groupMark(group, t, size, n) {
+    const color = t[group.color] ?? t.muted;
+    if (group.key === "rally") {
+      return div().relative().w(size + 18).h(size + 4).flex_none()
+        .child(div().absolute().left((size + 18) / 2 - 1).top(0).w(2).h(size + 4).bg(t.dim))
+        .child(div().id(`group-mark-${group.key}-${n}`).absolute().top(2).size(size).rounded(size / 2).bg(BALL)
+          .when(n >= 0, (ball) => ball.loop("left", { from: 0, to: 18, period: 1200 })));
+    }
+    if (group.key === "challenge") {
+      return h_flex().id(`group-mark-${group.key}-${n}`).size(size + 4).flex_none().rounded((size + 4) / 2).bg(color)
+        .items_center().justify_center().text_size(size).font_weight(800).text_color("#10140c").child("!")
+        .loop("opacity", { from: 0.45, to: 1, period: 700 });
+    }
+    if (group.key === "game") {
+      return div().size(size + 2).flex_none().rounded((size + 2) / 2).border(2).border_color(color);
+    }
+    return div().size(size).flex_none().rounded(size / 2).bg(BALL).opacity(0.55);
+  }
+
+  agentMark(group, a, n, t) {
+    if (group.key === "rally") {
+      return div().id(`agent-mark-${a.address}`).relative().size(8).rounded(4).bg(BALL)
+        .loop("top", { from: 1, to: -3, period: 520 + (n % 4) * 60 });
+    }
+    if (group.key === "challenge") {
+      return div().id(`agent-mark-${a.address}`).size(8).rounded(4).bg(t.blocked)
+        .loop("opacity", { from: 0.35, to: 1, period: 700 });
+    }
+    if (group.key === "game") return div().size(8).rounded(4).border(2).border_color(t.done);
+    return div().size(7).rounded(4).bg(t.idle);
+  }
+
+  agentGroups(t, collapsed) {
+    const all = agents();
+    const section = (group) => {
+      const members = all.filter((a) => group.statuses.includes(a.status));
+      const color = t[group.color] ?? t.muted;
+      const folded = this.foldedGroups.has(group.key);
+      const head = h_flex().id(`group-${group.key}`).h(28).flex_none().px(collapsed ? 0 : 8).gap(8).items_center().cursor_pointer()
+        .when(collapsed, (el) => el.justify_center())
+        .on_click((_e, cx) => {
+          folded ? this.foldedGroups.delete(group.key) : this.foldedGroups.add(group.key);
+          localStorage.setItem("tennis.groups.folded", JSON.stringify([...this.foldedGroups]));
+          cx.notify();
+        })
+        .child(this.groupMark(group, t, 7, members.length ? 1 : -1))
+        .when(!collapsed, (el) => el
+          .child(div().flex_1().text_size(11).font_weight(800).text_color(members.length ? color : t.dim).child(group.label.toUpperCase()))
+          .child(div().text_size(11.5).font_weight(700).text_color(members.length ? t.foreground : t.dim).child(String(members.length)))
+          .child(svg(`mods/workspace-chrome/chevron-${folded ? "right" : "down"}.svg`).size(11).flex_none().text_color(t.dim)));
+      const row = (a, n) => h_flex().id(`agent-${group.key}-${a.address}`).h(26).flex_none().px(8).gap(9).items_center().rounded(6).cursor_pointer()
+        .when(collapsed, (el) => el.justify_center())
+        .when(a.focused, (el) => el.bg(tint(color, "33", t.selected)))
+        .when(!a.focused, (el) => el.hover((s) => s.bg(tint(color, "22", t.hover))))
+        .on_click(() => run("agent.focus", { terminal: a.address }))
+        .child(h_flex().size(14).flex_none().items_center().justify_center().child(this.agentMark(group, a, n, t)))
+        .when(!collapsed, (el) => el
+          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(a.space_name))
+          .when(Boolean(a.program?.icon), (row) => row.child(a.program.tint
+            ? svg(a.program.icon).size(13).flex_none().text_color(a.program.color ?? t.dim)
+            : image(a.program.icon).size(13).flex_none())));
+      return v_flex().flex_none().mx(collapsed ? 2 : 8).mt(6).px(collapsed ? 0 : 2).pb(members.length && !folded ? 4 : 0).rounded(8)
+        .bg(members.length ? tint(color, "14", t.raised) : t.chrome)
+        .border(1).border_color(members.length ? tint(color, "40", t.border) : t.border)
+        .child(head)
+        .when(!folded, (el) => el.children(members.map(row)));
+    };
+    return v_flex().id("agent-groups").flex_1().min_h(0).pb(10).overflow_y_scrollbar()
+      .children(GROUPS.map(section));
   }
 
   render() {
@@ -459,7 +508,9 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
-    this.calls = this.tally();
+    if (props()?.role === "agents") {
+      return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13).child(this.agentGroups(t, false));
+    }
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child("Spaces"))

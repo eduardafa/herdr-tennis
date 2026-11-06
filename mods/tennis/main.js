@@ -9,10 +9,11 @@ const COURTS = [
   { theme: "tennis-indoor", label: "Indoor", venue: "Indoor arena", court: "#2346a8", stripe: "#2346a8", outside: "#141826", line: "#ffffff" },
 ];
 const CALL = { working: "Rally", blocked: "Challenge", done: "Game", idle: "Ready", unknown: "Warm-up" };
+const QUIET = new Set(["idle", "unknown"]);
 const COURT_PRIORITY = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 };
 const BALL = "#dfff4f", BALL_EDGE = "#a8c225";
-const PLAYER_W = 46, PLAYER_H = 57, PLAYER_SPACING = 132, RALLY_MS = 1800;
-const SEAT_W = 48, BENCH_ROW_H = 78, WOOD = "#b07a45", WOOD_DARK = "#7a5130";
+const PLAYER_W = 46, PLAYER_H = 57, PLAYER_SPACING = 132, MIN_PLAYER_SPACING = 66, LABEL_W = 180, PLAYER_LABEL_REACH = (LABEL_W - PLAYER_W) / 2 + 8, RALLY_MS = 1800;
+const BENCH_AFTER = 10, SEAT_W = 48, BENCH_ROW_H = 78, WOOD = "#b07a45", WOOD_DARK = "#7a5130";
 
 const courtNow = () => {
   const picked = settings()?.theme;
@@ -41,9 +42,10 @@ export default class Tennis extends View {
     setAgentOrder(list.map((a) => a.address));
     const zoom = Number(settings()?.zoom) || 1;
     const W = this.size.width / zoom, H = this.size.height / zoom;
+    const showBench = list.length > BENCH_AFTER;
     const benchW = Math.min(240, Math.max(170, W * 0.15)), benchX = W - benchW - 24;
     const my = Math.max(34, H * 0.16), cl = Math.max(60, W * 0.04), titleX = Math.max(90, cl);
-    const ct = my, cw = Math.max(240, benchX - 40 - cl), ch = Math.max(90, H - my * 2);
+    const ct = my, cw = Math.max(240, showBench ? benchX - 40 - cl : W - cl * 2), ch = Math.max(90, H - my * 2);
     const net = cl + cw / 2, singles = ch * 0.125, service = cw * 0.23, lw = 2;
 
     const surface = [rect(cl, ct, cw, ch, c.court)];
@@ -66,13 +68,20 @@ export default class Tennis extends View {
       div().absolute().left(net - 5).top(ct + ch + 7).size(10).rounded(5).bg("#2a2a2a"),
     ];
 
-    const perSide = Math.max(1, Math.floor((cw / 2 - cw * 0.05 - 30) / PLAYER_SPACING));
+    const reach = Math.max(0, cw / 2 - cw * 0.05 - 36 - PLAYER_W - PLAYER_LABEL_REACH);
+    let spacing = PLAYER_SPACING, perSide = Math.floor(reach / spacing) + 1;
+    const wanted = Math.ceil(list.length / 2);
+    if (!showBench && wanted > perSide) {
+      spacing = Math.max(MIN_PLAYER_SPACING, reach / (wanted - 1));
+      perSide = Math.floor(reach / spacing) + 1;
+    }
     const place = (side, arr) => arr.map((a, i) => {
-      const fromBaseline = cw * 0.05 + 36 + i * PLAYER_SPACING;
+      const fromBaseline = cw * 0.05 + 36 + i * spacing;
+      const up = side === "left" ? i % 2 === 0 : i % 2 === 1;
       return {
         a, side,
         x: side === "left" ? cl + fromBaseline : cl + cw - fromBaseline - PLAYER_W,
-        y: ct + ch / 2 - PLAYER_H / 2 - 8 + (i % 2 ? ch * 0.17 : -ch * 0.17),
+        y: ct + ch / 2 - PLAYER_H / 2 - 14 + (up ? -ch * 0.17 : ch * 0.17),
       };
     });
     const onCourt = [...list].sort((a, b) => (COURT_PRIORITY[a.status] ?? 9) - (COURT_PRIORITY[b.status] ?? 9));
@@ -116,10 +125,13 @@ export default class Tennis extends View {
           .child("No players on court yet. Start an agent to serve."))))
       .children([...left, ...right].map((p) => this.player(p, t)))
       .when(rally !== null, (el) => el.child(this.ball(rally[0], rally[1])))
-      .child(h_flex().absolute().left(benchX).top(my / 2 - 9).gap(6).items_center()
-        .child(div().text_size(12).font_weight(800).text_color("#ffffff").child("BENCH"))
-        .when(benched.length > 0, (el) => el.child(div().text_size(12).text_color("#ffffffb0").child(String(benched.length)))))
-      .children(this.bench(benched, benchX, ct, benchW, ch, t));
+      .when(showBench, (el) => el
+        .child(h_flex().absolute().left(benchX).top(my / 2 - 9).gap(6).items_center()
+          .child(div().text_size(12).font_weight(800).text_color("#ffffff").child("BENCH"))
+          .child(div().text_size(12).text_color("#ffffffb0").child(String(benched.length))))
+        .children(this.bench(benched, benchX, ct, benchW, ch, t)))
+      .when(!showBench && benched.length > 0, (el) => el.child(div().absolute().right(cl + 8).bottom(my + 6).px(8).py(2).rounded(8)
+        .bg("#00000055").text_size(11).font_weight(600).text_color("#ffffff").child(`+${benched.length} waiting`)));
   }
 
   bench(list, x, y, w, h, t) {
@@ -176,18 +188,19 @@ export default class Tennis extends View {
         .text_color("#10140c").child(CALL[a.status].toUpperCase())
         .when(a.status === "blocked", (el) => el.loop("opacity", { from: 0.6, to: 1, period: 700 }))
       : div().h(16);
-    return v_flex().id(`player-${a.address}`).absolute().left(x - 36).top(y - 18).w(PLAYER_W + 72).items_center().gap(1)
+    return v_flex().id(`player-${a.address}`).absolute().left(x + PLAYER_W / 2 - LABEL_W / 2).top(y - 18).w(LABEL_W).items_center().gap(1)
       .cursor_pointer()
       .transition("top", { duration: 500, easing: "ease-in-out" })
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click(() => run("agent.focus", { terminal: a.address }))
       .child(badge)
       .child(figure)
-      .child(h_flex().gap(4).items_center().max_w(PLAYER_W + 72).px(6).py(1).rounded(6).bg("#00000066")
+      .child(v_flex().items_center().max_w(LABEL_W).px(7).py(1).rounded(6).bg("#00000066")
         .when(a.focused, (el) => el.border(1).border_color(BALL))
-        .child(icon(a.program, 12))
-        .child(div().text_size(11).font_weight(600).text_color("#ffffff").truncate().child(a.space_name))
-        .child(div().text_size(10).font_weight(700).text_color(color).child(CALL[a.status] ?? "")));
+        .child(h_flex().gap(4).items_center().max_w(LABEL_W - 14)
+          .child(icon(a.program, 12))
+          .child(div().text_size(11).font_weight(600).text_color("#ffffff").truncate().child(a.space_name)))
+        .child(div().text_size(9.5).font_weight(700).text_color(QUIET.has(a.status) ? "#ffffffb0" : color).child(CALL[a.status] ?? "")));
   }
 
   ball(from, to) {
