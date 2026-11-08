@@ -19,6 +19,7 @@ Or copy `layouts/`, `mods/` and `themes/` into `~/.config/herdr-app/`, then swit
 - Pick a court with the Hard (NY or MEL), Grass, Clay and Indoor buttons on the scoreboard, or a tennis theme in Settings. After installing, restart Herdr once so it loads the Melbourne theme.
 - Each player wears its space's color, except on grass, where everyone wears white.
 - Click a player, or an agent in the left panel, to jump to that agent.
+- Your name and a settings button sit under the Spaces list.
 - The left panel groups your agents into Rally (working), Challenge (needs you), Ready and Point (finished). Each space below shows the same marker for its busiest agent.
 - Click a section header, the Spaces header or a repo's arrow to fold it.
 
